@@ -5,8 +5,11 @@ import {
   getIncompleteUsersForReminder, 
   markRetargetingSent,
   getCompletedUsersForTrainingReminder,
-  markTrainingReminderSent
+  markTrainingReminderSent,
+  getTodayCompletedUsersForMorningReminder,
+  markMorningReminderSent
 } from '../database.js';
+import { getCityOffice, getUzbekDayName } from '../keyboards.js';
 
 if (!config.botToken) {
   throw new Error('❌ TELEGRAM_BOT_TOKEN is not configured!');
@@ -41,7 +44,13 @@ export default async function handler(req, res) {
     // Ensure DB is initialized
     await initDb();
     const now = Date.now();
-    const results = { nudges: 0, trainingReminders: 0, skipped: 0, errors: 0 };
+    const results = { 
+      nudges: 0, 
+      trainingReminders: 0, 
+      morningReminders: 0, 
+      skipped: 0, 
+      errors: 0 
+    };
 
     // 2. Process 30-Minute Retargeting Nudges
     const thirtyMinutesInSeconds = 30 * 60;
@@ -65,7 +74,88 @@ export default async function handler(req, res) {
       }
     }
 
-    // 3. Process 12-Hour Training Reminders
+    // 3. Process Morning 08:30 Reminders with Map Location & Interactive Buttons
+    const tashkentOffsetMs = 5 * 60 * 60 * 1000;
+    const tashkentNow = new Date(now + tashkentOffsetMs);
+    const ty = tashkentNow.getUTCFullYear();
+    const tm = String(tashkentNow.getUTCMonth() + 1).padStart(2, '0');
+    const td = String(tashkentNow.getUTCDate()).padStart(2, '0');
+    const todayStr = `${ty}-${tm}-${td}`;
+
+    const todayUsers = await getTodayCompletedUsersForMorningReminder(todayStr);
+
+    for (const user of todayUsers) {
+      if (Number(user.user_id) <= 0) {
+        await markMorningReminderSent(user.user_id);
+        continue;
+      }
+
+      try {
+        const trainingDate = parseTrainingDatetime(user.training_date, config.trainingTime);
+        const trainingTimestamp = trainingDate.getTime();
+
+        // If training time has already passed today by more than 2 hours, skip sending
+        if (now > trainingTimestamp + (2 * 60 * 60 * 1000)) {
+          results.skipped++;
+          await markMorningReminderSent(user.user_id);
+          continue;
+        }
+
+        const office = getCityOffice(user.city);
+
+        // A. Send Map Location / Venue
+        try {
+          await bot.telegram.sendVenue(
+            user.user_id,
+            office.latitude,
+            office.longitude,
+            office.title,
+            office.address
+          );
+        } catch (vErr) {
+          try {
+            await bot.telegram.sendLocation(user.user_id, office.latitude, office.longitude);
+          } catch (lErr) {
+            console.warn(`⚠️ Could not send location to user ${user.user_id}:`, lErr.message);
+          }
+        }
+
+        // B. Send interactive confirmation message
+        const morningMessage = 
+          `🔔 *Bugun sizning treningingiz kuni!* 🚀\n\n` +
+          `Assalomu alaykum, *${user.full_name || 'kuryer'}*!\n\n` +
+          `Bugun sizni Uzum Tezkor kuryerlar inkubatorida kutib qolamiz:\n` +
+          `⏰ *Boshlanish vaqti:* Soat *${config.trainingTime}* da\n` +
+          `📍 *Manzil:* ${office.address}\n` +
+          `🚗 *Tanlangan transport:* ${user.transport_type || 'Kuryer'}\n\n` +
+          `🗺 *Ofis lokatsiyasi xaritada yuqorida yuborildi.*\n\n` +
+          `Iltimos, bugun treningga kelishingizni tasdiqlang:`;
+
+        await bot.telegram.sendMessage(user.user_id, morningMessage, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "✅ Ha, albatta boraman", callback_data: `att_confirm_${user.user_id}` }
+              ],
+              [
+                { text: "❌ Bora olmayman (Kechiktirish)", callback_data: `att_resched_${user.user_id}` }
+              ]
+            ]
+          }
+        });
+
+        results.morningReminders++;
+        console.log(`✉️ Morning 08:30 reminder + map sent to user ${user.user_id}`);
+      } catch (err) {
+        results.errors++;
+        console.error(`❌ Failed to send morning reminder to user ${user.user_id}:`, err.message);
+      } finally {
+        await markMorningReminderSent(user.user_id);
+      }
+    }
+
+    // 4. Process 1-Day Before (12-24h) Training Reminders
     const completedUsers = await getCompletedUsersForTrainingReminder();
     
     for (const user of completedUsers) {
@@ -76,24 +166,37 @@ export default async function handler(req, res) {
       try {
         const trainingDate = parseTrainingDatetime(user.training_date, config.trainingTime);
         const trainingTimestamp = trainingDate.getTime();
-        const twelveHoursInMs = 12 * 60 * 60 * 1000;
-        const reminderStartTimestamp = trainingTimestamp - twelveHoursInMs;
+        const twentyFourHoursInMs = 24 * 60 * 60 * 1000;
+        const reminderStartTimestamp = trainingTimestamp - twentyFourHoursInMs;
         
         if (now >= reminderStartTimestamp && now < trainingTimestamp) {
-          const [year, month, day] = user.training_date.split('-');
-          const formattedDate = `${day}.${month}.${year}`;
+          const formattedDate = getUzbekDayName(user.training_date);
+          const office = getCityOffice(user.city);
           
           await bot.telegram.sendMessage(
             user.user_id,
-            `Eslatma! Treningingiz boshlanishiga oz fursat qoldi! 📅\n\n` +
+            `Eslatma! Ertaga sizning treningingiz kuni! 📅\n\n` +
             `Siz tanlagan trening kuni va vaqti:\n` +
-            `🗓 *${formattedDate}* soat *${config.trainingTime}* da.\n\n` +
-            `Sizni Uzum Tezkor ofisida kutamiz! Kechikmasdan kelishingizni so'raymiz. Savollar yuzasidan operatorlarimiz bog'lanishini kuting. 🚀`,
-            { parse_mode: 'Markdown' }
+            `🗓 *${formattedDate}* soat *${config.trainingTime}* da.\n` +
+            `📍 *Manzil:* ${office.address}\n\n` +
+            `Ertaga ertalab soat 08:30 da sizga aniq geolokatsiya va yo'nalish yuboriladi. Treningga kelishingizni tasdiqlaysizmi?`,
+            { 
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: "✅ Ha, albatta boraman", callback_data: `att_confirm_${user.user_id}` }
+                  ],
+                  [
+                    { text: "❌ Bora olmayman (Kechiktirish)", callback_data: `att_resched_${user.user_id}` }
+                  ]
+                ]
+              }
+            }
           );
           
           results.trainingReminders++;
-          console.log(`✉️ Training reminder sent to user ${user.user_id}`);
+          console.log(`✉️ 1-day before training reminder sent to user ${user.user_id}`);
           await markTrainingReminderSent(user.user_id);
         } else if (now >= trainingTimestamp) {
           results.skipped++;

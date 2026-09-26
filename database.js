@@ -43,9 +43,19 @@ export async function initDb() {
       created_at BIGINT,
       updated_at BIGINT,
       last_reminder_sent BIGINT DEFAULT NULL,
-      training_reminder_sent BIGINT DEFAULT NULL
+      training_reminder_sent BIGINT DEFAULT NULL,
+      morning_reminder_sent BIGINT DEFAULT NULL,
+      attendance_status TEXT DEFAULT NULL
     )
   `);
+
+  // Safe migration for existing installations
+  try {
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS morning_reminder_sent BIGINT DEFAULT NULL;`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS attendance_status TEXT DEFAULT NULL;`);
+  } catch (migErr) {
+    console.warn('⚠️ Column migration notice:', migErr.message);
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS telegraf_sessions (
@@ -186,6 +196,58 @@ export async function markTrainingReminderSent(userId) {
   const pool = getPool();
   const now = Math.floor(Date.now() / 1000);
   await pool.query('UPDATE users SET training_reminder_sent = $1 WHERE user_id = $2', [now, userId]);
+}
+
+/**
+ * Fetches completed registrations whose training is scheduled for today
+ * and haven't received the 08:30 morning reminder yet.
+ */
+export async function getTodayCompletedUsersForMorningReminder(todayStr) {
+  const pool = getPool();
+  const res = await pool.query(`
+    SELECT * FROM users 
+    WHERE status = 'completed' 
+      AND user_id > 0
+      AND (username IS NULL OR username != 'web_form')
+      AND training_date = $1 
+      AND morning_reminder_sent IS NULL
+  `, [todayStr]);
+  return res.rows;
+}
+
+/**
+ * Marks morning 08:30 reminder as sent
+ */
+export async function markMorningReminderSent(userId) {
+  const pool = getPool();
+  const now = Math.floor(Date.now() / 1000);
+  await pool.query('UPDATE users SET morning_reminder_sent = $1 WHERE user_id = $2', [now, userId]);
+}
+
+/**
+ * Updates attendance confirmation status ('confirmed' or 'declined')
+ */
+export async function updateAttendanceStatus(userId, status) {
+  const pool = getPool();
+  const now = Math.floor(Date.now() / 1000);
+  await pool.query('UPDATE users SET attendance_status = $1, updated_at = $2 WHERE user_id = $3', [status, now, userId]);
+}
+
+/**
+ * Reschedules a user's training date to a new date and resets reminders
+ */
+export async function rescheduleTrainingDate(userId, newDate) {
+  const pool = getPool();
+  const now = Math.floor(Date.now() / 1000);
+  await pool.query(`
+    UPDATE users 
+    SET training_date = $1, 
+        training_reminder_sent = NULL, 
+        morning_reminder_sent = NULL, 
+        attendance_status = 'rescheduled', 
+        updated_at = $2 
+    WHERE user_id = $3
+  `, [newDate, now, userId]);
 }
 
 /**

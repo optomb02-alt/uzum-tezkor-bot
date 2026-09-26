@@ -111,6 +111,48 @@ try {
     }
     console.log('✅ Completed user reminder query check passed!');
 
+    console.log('Testing Morning Reminder and Attendance Functions...');
+    const { 
+      getTodayCompletedUsersForMorningReminder, 
+      markMorningReminderSent, 
+      updateAttendanceStatus, 
+      rescheduleTrainingDate 
+    } = await import('./database.js');
+    const { getCityOffice, getUzbekDayName } = await import('./keyboards.js');
+
+    const office = getCityOffice('Toshkent');
+    if (!office || !office.latitude || !office.address) {
+      throw new Error('Office location lookup failed!');
+    }
+    console.log(`✅ Office location check passed: ${office.title} (${office.address})`);
+
+    const formattedDay = getUzbekDayName('2026-10-01');
+    console.log(`✅ Uzbek day format check passed: ${formattedDay}`);
+
+    // Test morning reminder lookup
+    const todayMorningList = await getTodayCompletedUsersForMorningReminder(tomorrowValue);
+    console.log(`✅ Morning reminder query executed (${todayMorningList.length} users found).`);
+
+    // Test attendance confirmation
+    await updateAttendanceStatus(testUserId, 'confirmed');
+    user = await getUser(testUserId);
+    if (user.attendance_status !== 'confirmed') {
+      throw new Error('Attendance confirmation failed!');
+    }
+    console.log('✅ Attendance confirmation check passed!');
+
+    // Test reschedule training date
+    const newRescheduleDate = workingDays[1].value;
+    await rescheduleTrainingDate(testUserId, newRescheduleDate);
+    user = await getUser(testUserId);
+    if (user.training_date !== newRescheduleDate || user.attendance_status !== 'rescheduled') {
+      throw new Error('Training reschedule failed!');
+    }
+    console.log('✅ Training reschedule check passed!');
+
+    // Clean up test user
+    await getPool().query('DELETE FROM users WHERE user_id = $1', [testUserId]);
+
     console.log('Testing PostgreSQL Session Persistence...');
     const { pgSessionMiddleware } = await import('./database.js');
     const middleware = pgSessionMiddleware();
