@@ -150,6 +150,25 @@ try {
     }
     console.log('✅ Training reschedule check passed!');
 
+    console.log('Testing Admin Registration Stats Query...');
+    const { getRegistrationStats, getUsersForExport, generateCsvContent } = await import('./database.js');
+    const stats = await getRegistrationStats();
+    if (typeof stats.total !== 'number' || typeof stats.today !== 'number') {
+      throw new Error('Stats query returned invalid format!');
+    }
+    console.log(`✅ Stats check passed (Total: ${stats.total}, Today: ${stats.today}, Week: ${stats.week})`);
+
+    console.log('Testing Admin Export & CSV Generator...');
+    const exportUsers = await getUsersForExport('all');
+    if (!Array.isArray(exportUsers) || exportUsers.length === 0) {
+      throw new Error('getUsersForExport returned empty array!');
+    }
+    const csvContent = generateCsvContent(exportUsers);
+    if (!csvContent.includes('F.I.SH') || !csvContent.includes('Jamshid Karimov')) {
+      throw new Error('CSV generator failed to produce proper table content!');
+    }
+    console.log(`✅ Export & CSV generation check passed (${exportUsers.length} rows, ${csvContent.length} bytes)!`);
+
     // Clean up test user
     await getPool().query('DELETE FROM users WHERE user_id = $1', [testUserId]);
 

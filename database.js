@@ -296,3 +296,164 @@ export function pgSessionMiddleware() {
   };
 }
 
+/**
+ * Retrieves aggregate statistics for admin dashboard
+ */
+export async function getRegistrationStats() {
+  const pool = getPool();
+  
+  // Calculate Tashkent today and week start timestamps
+  const now = Date.now();
+  const tashkentOffsetMs = 5 * 60 * 60 * 1000;
+  const tashkentDate = new Date(now + tashkentOffsetMs);
+  
+  const y = tashkentDate.getUTCFullYear();
+  const m = tashkentDate.getUTCMonth();
+  const d = tashkentDate.getUTCDate();
+  
+  const todayStartUtc = Date.UTC(y, m, d) - tashkentOffsetMs;
+  const todayStartSec = Math.floor(todayStartUtc / 1000);
+  
+  // Week starts on Monday
+  const dayOfWeek = tashkentDate.getUTCDay(); // 0 = Sun, 1 = Mon ...
+  const daysSinceMonday = (dayOfWeek + 6) % 7;
+  const weekStartUtc = Date.UTC(y, m, d - daysSinceMonday) - tashkentOffsetMs;
+  const weekStartSec = Math.floor(weekStartUtc / 1000);
+
+  const mm = String(m + 1).padStart(2, '0');
+  const dd = String(d).padStart(2, '0');
+  const todayStr = `${y}-${mm}-${dd}`;
+
+  // 1. Single aggregate query for all primary counts
+  const countsQuery = `
+    SELECT 
+      COUNT(*) as total,
+      COUNT(CASE WHEN created_at >= $1 THEN 1 END) as today,
+      COUNT(CASE WHEN created_at >= $2 THEN 1 END) as week,
+      COUNT(CASE WHEN training_date = $3 THEN 1 END) as today_training
+    FROM users 
+    WHERE status = 'completed'
+  `;
+  const countsRes = await pool.query(countsQuery, [todayStartSec, weekStartSec, todayStr]);
+  const cRow = countsRes.rows[0] || {};
+
+  // 2. City breakdown
+  const citiesRes = await pool.query(
+    `SELECT city, COUNT(*) as count FROM users WHERE status = 'completed' AND city IS NOT NULL GROUP BY city ORDER BY count DESC`
+  );
+
+  // 3. Transport breakdown
+  const transportsRes = await pool.query(
+    `SELECT transport_type, COUNT(*) as count FROM users WHERE status = 'completed' AND transport_type IS NOT NULL GROUP BY transport_type ORDER BY count DESC`
+  );
+
+  // 4. Attendance breakdown
+  const attendanceRes = await pool.query(
+    `SELECT attendance_status, COUNT(*) as count FROM users WHERE status = 'completed' GROUP BY attendance_status`
+  );
+
+  return {
+    total: parseInt(cRow.total || 0, 10),
+    today: parseInt(cRow.today || 0, 10),
+    week: parseInt(cRow.week || 0, 10),
+    todayTraining: parseInt(cRow.today_training || 0, 10),
+    byCity: citiesRes.rows.map(r => ({ city: r.city, count: parseInt(r.count, 10) })),
+    byTransport: transportsRes.rows.map(r => ({ transport: r.transport_type, count: parseInt(r.count, 10) })),
+    attendance: attendanceRes.rows.map(r => ({ status: r.attendance_status || 'Kutilmoqda', count: parseInt(r.count, 10) }))
+  };
+}
+
+/**
+ * Fetches users list for Excel/CSV export
+ */
+export async function getUsersForExport(filter = 'all') {
+  const pool = getPool();
+  const now = Date.now();
+  const tashkentOffsetMs = 5 * 60 * 60 * 1000;
+  const tashkentDate = new Date(now + tashkentOffsetMs);
+  
+  const y = tashkentDate.getUTCFullYear();
+  const m = tashkentDate.getUTCMonth();
+  const d = tashkentDate.getUTCDate();
+  
+  let query = `
+    SELECT 
+      user_id, username, full_name, phone_number, city, transport_type, 
+      training_date, attendance_status, created_at
+    FROM users 
+    WHERE status = 'completed'
+  `;
+  const params = [];
+
+  if (filter === 'today') {
+    const todayStartUtc = Date.UTC(y, m, d) - tashkentOffsetMs;
+    const todayStartSec = Math.floor(todayStartUtc / 1000);
+    query += ` AND created_at >= $1 ORDER BY created_at DESC`;
+    params.push(todayStartSec);
+  } else if (filter === 'week') {
+    const dayOfWeek = tashkentDate.getUTCDay();
+    const daysSinceMonday = (dayOfWeek + 6) % 7;
+    const weekStartUtc = Date.UTC(y, m, d - daysSinceMonday) - tashkentOffsetMs;
+    const weekStartSec = Math.floor(weekStartUtc / 1000);
+    query += ` AND created_at >= $1 ORDER BY created_at DESC`;
+    params.push(weekStartSec);
+  } else {
+    query += ` ORDER BY created_at DESC`;
+  }
+
+  const res = await pool.query(query, params);
+  return res.rows;
+}
+
+/**
+ * Formats a list of user objects into an Excel-compatible CSV string with UTF-8 support
+ */
+export function generateCsvContent(users) {
+  const headers = [
+    '№',
+    'F.I.SH',
+    'Telefon',
+    'Shahar',
+    'Transport',
+    'Trening Sanasi',
+    'Telegram Username',
+    'Telegram ID',
+    'Kelish Holati',
+    'Ro\'yxatdan o\'tgan vaqt'
+  ];
+
+  const escapeCsv = (val) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  const rows = users.map((u, i) => {
+    const dateFormatted = u.created_at 
+      ? new Date(Number(u.created_at) * 1000).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent' })
+      : '';
+    const attStatus = u.attendance_status === 'confirmed' 
+      ? 'Tasdiqlagan' 
+      : u.attendance_status === 'rescheduled' 
+        ? 'Ko\'chirilgan' 
+        : 'Kutilmoqda';
+    const tgUsername = (u.username && u.username !== 'web_form') ? `@${u.username}` : (u.username || 'Yo\'q');
+    
+    return [
+      i + 1,
+      escapeCsv(u.full_name || ''),
+      escapeCsv(u.phone_number || ''),
+      escapeCsv(u.city || ''),
+      escapeCsv(u.transport_type || ''),
+      escapeCsv(u.training_date || ''),
+      escapeCsv(tgUsername),
+      escapeCsv(u.user_id),
+      escapeCsv(attStatus),
+      escapeCsv(dateFormatted)
+    ].join(';');
+  });
+
+  return [headers.map(escapeCsv).join(';'), ...rows].join('\r\n');
+}
+
+

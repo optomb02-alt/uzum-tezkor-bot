@@ -6,7 +6,10 @@ import {
   pgSessionMiddleware,
   getUser,
   updateAttendanceStatus,
-  rescheduleTrainingDate
+  rescheduleTrainingDate,
+  getRegistrationStats,
+  getUsersForExport,
+  generateCsvContent
 } from '../database.js';
 import { onboardingWizard, COURIER_ONBOARDING_WIZARD } from '../scenes.js';
 import { getNext5WorkingDays, getUzbekDayName } from '../keyboards.js';
@@ -170,13 +173,194 @@ bot.action(/^resched_set_(\d+)_(.+)$/, async (ctx) => {
   }
 });
 
+// Admin authentication helper
+function isAdmin(ctx) {
+  if (!config.adminChatId || config.adminChatId === 'YOUR_ADMIN_CHAT_ID_HERE') {
+    return true; // Allow for testing if not explicitly configured
+  }
+  const senderId = String(ctx.from?.id || '');
+  const chatId = String(ctx.chat?.id || '');
+  const adminIds = String(config.adminChatId).split(',').map(s => s.trim());
+  return adminIds.includes(senderId) || adminIds.includes(chatId);
+}
+
+// Stats message formatting helper
+async function buildStatsMessage() {
+  const stats = await getRegistrationStats();
+  const nowStr = new Date().toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent' });
+
+  const cityText = stats.byCity.length > 0 
+    ? stats.byCity.map(c => `  • ${c.city}: *${c.count}* ta`).join('\n') 
+    : '  • Ma\'lumot mavjud emas';
+
+  const transportText = stats.byTransport.length > 0 
+    ? stats.byTransport.map(t => `  • ${t.transport}: *${t.count}* ta`).join('\n') 
+    : '  • Ma\'lumot mavjud emas';
+
+  const attText = stats.attendance.length > 0 
+    ? stats.attendance.map(a => `  • ${a.status}: *${a.count}* ta`).join('\n') 
+    : '  • Ma\'lumot mavjud emas';
+
+  return `📊 *UZUM TEZKOR — KURYERLAR STATISTIKASI*\n\n` +
+    `👥 *Jami to'liq ro'yxatdan o'tganlar:* *${stats.total}* nafar\n` +
+    `📅 *Bugungi yangi arizalar:* *${stats.today}* ta\n` +
+    `🗓 *Shu haftadagi arizalar:* *${stats.week}* ta\n` +
+    `🎯 *Bugungi trening ishtirokchilari:* *${stats.todayTraining}* ta\n\n` +
+    `🏙 *Shaharlar kesimida:*\n${cityText}\n\n` +
+    `🚗 *Transport turlari bo'yicha:*\n${transportText}\n\n` +
+    `📋 *Davomat holati:*\n${attText}\n\n` +
+    `⏱ *Yangilangan vaqt:* \`${nowStr}\``;
+}
+
+// Handle /stats command
+bot.command('stats', async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.reply("Kechirasiz, ushbu buyruq faqat loyiha ma'murlari uchun ruxsat etilgan. 🔒");
+  }
+
+  const message = await buildStatsMessage();
+
+  await ctx.reply(message, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "📥 Excel (CSV) eksport", callback_data: "admin_export_menu" },
+          { text: "🔄 Yangilash", callback_data: "admin_stats_refresh" }
+        ]
+      ]
+    }
+  });
+});
+
+// Refresh stats in place
+bot.action('admin_stats_refresh', async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.answerCbQuery('Faqat adminlar uchun!', { show_alert: true });
+  }
+
+  await ctx.answerCbQuery('Statistika yangilandi!').catch(() => {});
+  const message = await buildStatsMessage();
+
+  await ctx.editMessageText(message, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "📥 Excel (CSV) eksport", callback_data: "admin_export_menu" },
+          { text: "🔄 Yangilash", callback_data: "admin_stats_refresh" }
+        ]
+      ]
+    }
+  }).catch(() => {});
+});
+
+// Handle /export command
+bot.command('export', async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.reply("Kechirasiz, ushbu buyruq faqat loyiha ma'murlari uchun ruxsat etilgan. 🔒");
+  }
+
+  await ctx.reply(
+    `📥 *Kuryerlar ro'yxatini Excel formatida yuklab olish*\n\n` +
+    `Qaysi davr bo'yicha arizalarni yuklab olmoqchisiz? Tanlang: 👇`,
+    {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "📅 Bugungi arizalar", callback_data: "export_run_today" },
+            { text: "🗓 Shu haftadagi", callback_data: "export_run_week" }
+          ],
+          [
+            { text: "📊 Barcha kuryerlar ro'yxati", callback_data: "export_run_all" }
+          ]
+        ]
+      }
+    }
+  );
+});
+
+// Open export menu from stats action
+bot.action('admin_export_menu', async (ctx) => {
+  if (!isAdmin(ctx)) {
+    return ctx.answerCbQuery('Faqat adminlar uchun!', { show_alert: true });
+  }
+  await ctx.answerCbQuery().catch(() => {});
+
+  await ctx.reply(
+    `📥 *Kuryerlar ro'yxatini Excel formatida yuklab olish*\n\n` +
+    `Qaysi davr bo'yicha arizalarni yuklab olmoqchisiz? Tanlang: 👇`,
+    {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "📅 Bugungi arizalar", callback_data: "export_run_today" },
+            { text: "🗓 Shu haftadagi", callback_data: "export_run_week" }
+          ],
+          [
+            { text: "📊 Barcha kuryerlar ro'yxati", callback_data: "export_run_all" }
+          ]
+        ]
+      }
+    }
+  );
+});
+
+// Export execution helper
+async function handleExportAction(ctx, filter, label) {
+  if (!isAdmin(ctx)) {
+    return ctx.answerCbQuery('Faqat adminlar uchun!', { show_alert: true });
+  }
+
+  await ctx.answerCbQuery(`Excel fayl tayyorlanmoqda...`).catch(() => {});
+
+  try {
+    const users = await getUsersForExport(filter);
+    
+    if (users.length === 0) {
+      return ctx.reply(`ℹ️ Tanlangan davr (${label}) bo'yicha hech qanday ariza topilmadi.`);
+    }
+
+    const csvData = generateCsvContent(users);
+    const nowStr = new Date().toISOString().split('T')[0];
+    const filename = `kuryerlar_${filter}_${nowStr}.csv`;
+
+    await ctx.replyWithDocument({
+      source: Buffer.from('\uFEFF' + csvData, 'utf-8'),
+      filename: filename
+    }, {
+      caption: `📁 *Kuryerlar ro'yxati (${label})*\n\n` +
+        `• Jami kuryerlar: *${users.length}* nafar\n` +
+        `• Fayl formati: Excel / CSV (UTF-8)\n` +
+        `• Yuklab olingan vaqt: \`${new Date().toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent' })}\``,
+      parse_mode: 'Markdown'
+    });
+  } catch (err) {
+    console.error('Export error:', err);
+    await ctx.reply(`❌ Eksport qilishda xatolik yuz berdi: ${err.message}`);
+  }
+}
+
+bot.action('export_run_today', (ctx) => handleExportAction(ctx, 'today', 'Bugun'));
+bot.action('export_run_week', (ctx) => handleExportAction(ctx, 'week', 'Shu hafta'));
+bot.action('export_run_all', (ctx) => handleExportAction(ctx, 'all', 'Barchasi'));
+
 // Handle /help command
 bot.help(async (ctx) => {
-  await ctx.reply(
-    `Uzum Tezkor kuryerlar ro'yxatdan o'tish boti. 🚴‍♂️\n\n` +
-    `Qulay Mini App orqali anketani 1 daqiqada to'ldirishingiz mumkin.\n\n` +
-    `Boshlash uchun shunchaki /start buyrug'ini yuboring.`
-  );
+  let helpMsg = 
+    `🚴‍♂️ *Uzum Tezkor kuryerlar ro'yxatdan o'tish boti*\n\n` +
+    `• /start — Ro'yxatdan o'tishni boshlash (Mini App)\n` +
+    `• /help — Bot bo'yicha qo'llanma`;
+
+  if (isAdmin(ctx)) {
+    helpMsg += `\n\n👑 *Admin buyruqlari:*\n` +
+      `• /stats — Real vaqtli arizalar statistikasi\n` +
+      `• /export — Nomzodlar ro'yxatini Excel (.csv) formatida yuklab olish`;
+  }
+
+  await ctx.reply(helpMsg, { parse_mode: 'Markdown' });
 });
 
 // Fallback message handler for messages received outside FSM active state
