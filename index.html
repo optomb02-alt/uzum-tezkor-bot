@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uzum Tezkor - Kuryerlar Onboarding Markazi</title>
+    <meta name="description" content="Uzum Tezkor jamoasiga kuryer sifatida qo'shiling! Haftalik barqaror daromad, qulay ish grafigi va yuqori bonuslar.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --primary: hsl(264, 84%, 44%);
+            --primary-light: hsl(264, 84%, 56%);
+            --accent: hsl(43, 100%, 50%);
+            --bg-dark: hsl(264, 25%, 6%);
+            --bg-card: rgba(255, 255, 255, 0.03);
+            --border-color: rgba(255, 255, 255, 0.06);
+            --text-main: hsl(0, 0%, 95%);
+            --text-muted: hsl(264, 10%, 70%);
+            --font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            overflow-x: hidden;
+            line-height: 1.5;
+        }
+
+        /* Ambient Glow */
+        .ambient-glow {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(95, 18, 208, 0.15) 0%, rgba(0,0,0,0) 70%);
+            top: -100px;
+            right: -100px;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .ambient-glow-2 {
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(255, 180, 0, 0.05) 0%, rgba(0,0,0,0) 70%);
+            bottom: -100px;
+            left: -100px;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        header {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background-color: var(--primary);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1.5rem;
+            color: white;
+            box-shadow: 0 4px 20px rgba(95, 18, 208, 0.4);
+        }
+
+        .logo-text {
+            font-size: 1.3rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-text span {
+            color: var(--accent);
+        }
+
+        .nav-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 0.6rem 1.2rem;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .nav-btn:hover {
+            background: var(--primary);
+            border-color: var(--primary-light);
+            box-shadow: 0 4px 15px rgba(95, 18, 208, 0.3);
+            transform: translateY(-2px);
+        }
+
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem 6rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        @media (max-width: 968px) {
+            main {
+                grid-template-columns: 1fr;
+                gap: 3rem;
+                padding-top: 1rem;
+            }
+        }
+
+        /* Hero Text styling */
+        .hero-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .tagline {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(95, 18, 208, 0.1);
+            border: 1px solid rgba(95, 18, 208, 0.2);
+            color: var(--primary-light);
+            padding: 0.4rem 1rem;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            width: fit-content;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .hero-title {
+            font-size: 3.5rem;
+            font-weight: 800;
+            line-height: 1.15;
+            letter-spacing: -1px;
+        }
+
+        .hero-title span {
+            background: linear-gradient(135deg, #ffffff 40%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-desc {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            line-height: 1.6;
+        }
+
+        .benefits-grid {
+            margin-top: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+        }
+
+        .benefit-card {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+
+        .benefit-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(255, 180, 0, 0.1);
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .benefit-title {
+            font-weight: 600;
+            font-size: 1.05rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .benefit-desc {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Form Card Styling */
+        .form-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 2.5rem;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+
+        .form-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.5px;
+        }
+
+        .form-subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-main);
+        }
+
+        input, select {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.8rem 1rem;
+            color: var(--text-main);
+            font-family: var(--font-family);
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary-light);
+            background: rgba(255, 255, 255, 0.05);
+            box-shadow: 0 0 0 3px rgba(95, 18, 208, 0.15);
+        }
+
+        select option {
+            background-color: hsl(264, 25%, 10%);
+            color: var(--text-main);
+        }
+
+        .phone-input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .submit-btn {
+            width: 100%;
+            background: var(--primary);
+            border: 1px solid var(--primary-light);
+            color: white;
+            padding: 1rem;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 1rem;
+            box-shadow: 0 4px 20px rgba(95, 18, 208, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .submit-btn:hover {
+            background: var(--primary-light);
+            box-shadow: 0 6px 24px rgba(95, 18, 208, 0.4);
+            transform: translateY(-2px);
+        }
+
+        .submit-btn:disabled {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: transparent;
+            color: var(--text-muted);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Success Overlay */
+        .success-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: hsl(264, 25%, 6%);
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            text-align: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 10;
+        }
+
+        .success-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .checkmark-icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 180, 0, 0.1);
+            border-radius: 50%;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+            animation: scaleIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        .success-title {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin-bottom: 0.8rem;
+        }
+
+        .success-desc {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+
+        @keyframes scaleIn {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+
+        /* Spinner for loading */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="ambient-glow"></div>
+    <div class="ambient-glow-2"></div>
+
+    <header>
+        <div class="logo-container">
+            <div class="logo-icon">U</div>
+            <div class="logo-text">Uzum <span>Tezkor</span></div>
+        </div>
+        <a href="#form" class="nav-btn">Ro'yxatdan o'tish</a>
+    </header>
+
+    <main>
+        <section class="hero-section">
+            <div class="tagline">KURYERLIK INKUBATORI</div>
+            <h1 class="hero-title">Uzum Tezkor <span>jamoasiga kuryer bo'lib qo'shiling!</span></h1>
+            <p class="hero-desc">
+                Haftalik barqaror daromad va mutlaqo erkin grafik bilan kuryerlik faoliyatingizni boshlang. Quyidagi formani to'ldiring va yaqin oradagi trening sanasini tanlang!
+            </p>
+            
+            <div class="benefits-grid">
+                <div class="benefit-card">
+                    <div class="benefit-icon">💵</div>
+                    <div>
+                        <div class="benefit-title">Haftalik to'lovlar</div>
+                        <div class="benefit-desc">Har haftalik bajarilgan buyurtmalaringiz uchun haq o'z vaqtida to'lanadi.</div>
+                    </div>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon">⏰</div>
+                    <div>
+                        <div class="benefit-title">Moslashuvchan grafik</div>
+                        <div class="benefit-desc">O'zingizga qulay smenalarni va ishlash soatlarini o'zingiz tanlaysiz.</div>
+                    </div>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon">⚡</div>
+                    <div>
+                        <div class="benefit-title">Yuqori bonuslar</div>
+                        <div class="benefit-desc">Tezkorlik va sifatli xizmat ko'rsatganlik uchun qo'shimcha mukofot pullari.</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="form" class="form-card">
+            <div class="success-overlay" id="successOverlay">
+                <div class="checkmark-icon">✓</div>
+                <h2 class="success-title">Muvaffaqiyatli ro'yxatdan o'tdingiz!</h2>
+                <p class="success-desc">
+                    Sizning arizangiz qabul qilinib, ro'yxatga olindi. Belgilangan trening sanasida sizni kutib qolamiz.
+                </p>
+                <a href="https://t.me/Uzumtezkorishbot" class="nav-btn" style="background: var(--primary);">Telegram Botga o'tish</a>
+            </div>
+
+            <h2 class="form-title">Veb-ariza yuborish</h2>
+            <p class="form-subtitle">So'rovnomani to'ldiring va ro'yxatdan o'ting.</p>
+
+            <form id="registerForm">
+                <div class="form-group">
+                    <label for="fullName">To'liq ism (F.I.SH.)</label>
+                    <input type="text" id="fullName" placeholder="Ism va familiyangizni kiriting" required minlength="4">
+                </div>
+
+                <div class="form-group">
+                    <label for="transport">Transport turi</label>
+                    <select id="transport" required>
+                        <option value="Avto">🚗 Avto</option>
+                        <option value="Moto">🏍️ Moto</option>
+                        <option value="Elektrovelo">⚡🚲 Elektrovelo</option>
+                        <option value="Velo">🚲 Velo</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="city">Shahar</label>
+                    <select id="city" required>
+                        <option value="Toshkent">Toshkent</option>
+                        <option value="Samarqand">Samarqand</option>
+                        <option value="Namangan">Namangan</option>
+                        <option value="Andijon">Andijon</option>
+                        <option value="Farg'ona">Farg'ona</option>
+                        <option value="Buxoro">Buxoro</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="phone">Telefon raqam</label>
+                    <input type="tel" id="phone" value="+998" placeholder="+998901234567" required pattern="^\+998\d{9}$">
+                </div>
+
+                <div class="form-group">
+                    <label for="trainingDate">Trening sanasi</label>
+                    <select id="trainingDate" required></select>
+                </div>
+
+                <button type="submit" class="submit-btn" id="submitBtn">
+                    <span class="spinner" id="spinner"></span>
+                    <span id="btnText">Arizani yuborish</span>
+                </button>
+            </form>
+        </section>
+    </main>
+
+    <script>
+        // Dynamically calculate the next 5 working weekdays (Mo-Fr) starting tomorrow
+        function populateDates() {
+            const select = document.getElementById('trainingDate');
+            const dates = [];
+            const dayNamesUz = {
+                1: 'Dushanba',
+                2: 'Seshanba',
+                3: 'Chorshanba',
+                4: 'Payshanba',
+                5: 'Juma'
+            };
+            
+            let current = new Date();
+            
+            while (dates.length < 5) {
+                // Add 1 day
+                current.setDate(current.getDate() + 1);
+                const day = current.getDay();
+                // 0 = Sunday, 6 = Saturday. We only want weekdays 1-5 (Mo-Fr)
+                if (day !== 0 && day !== 6) {
+                    const d = String(current.getDate()).padStart(2, '0');
+                    const m = String(current.getMonth() + 1).padStart(2, '0');
+                    const y = current.getFullYear();
+                    const dayName = dayNamesUz[day] || 'Trening';
+                    
+                    const formattedDate = `${dayName} (${d}.${m}.${y})`;
+                    const rawDate = `${y}-${m}-${d}`;
+                    dates.push({ raw: rawDate, formatted: formattedDate });
+                }
+            }
+
+            dates.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.raw;
+                opt.textContent = d.formatted;
+                select.appendChild(opt);
+            });
+        }
+
+        populateDates();
+
+        // Initialize Telegram WebApp SDK
+        const tg = window.Telegram?.WebApp;
+        let tgUser = null;
+
+        if (tg) {
+            try {
+                tg.ready();
+                tg.expand();
+                tgUser = tg.initDataUnsafe?.user;
+                if (tgUser) {
+                    const fullNameInput = document.getElementById('fullName');
+                    const candidateName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ');
+                    if (candidateName && candidateName.split(/\s+/).length >= 2) {
+                        fullNameInput.value = candidateName;
+                    }
+                }
+            } catch (err) {
+                console.warn('Telegram WebApp init warning:', err);
+            }
+        }
+
+        // Handle AJAX form submission
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const fullName = document.getElementById('fullName').value.trim();
+            const transport = document.getElementById('transport').value;
+            const city = document.getElementById('city').value;
+            const phone = document.getElementById('phone').value.trim();
+            const trainingDate = document.getElementById('trainingDate').value;
+
+            // Simple client side validation: Name must contain at least 2 words
+            if (fullName.split(/\s+/).filter(word => word.length > 0).length < 2) {
+                alert("Iltimos, to'liq ism va familiyangizni kiriting (kamida 2 ta so'z)!");
+                return;
+            }
+
+            const submitBtn = document.getElementById('submitBtn');
+            const spinner = document.getElementById('spinner');
+            const btnText = document.getElementById('btnText');
+
+            // Show loading
+            submitBtn.disabled = true;
+            spinner.style.display = 'block';
+            btnText.textContent = 'Yuborilmoqda...';
+
+            try {
+                const response = await fetch('/api/web-register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fullName,
+                        transport,
+                        city,
+                        phone,
+                        trainingDate,
+                        userId: tgUser?.id || null,
+                        username: tgUser?.username || null
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    // Show success
+                    document.getElementById('successOverlay').classList.add('active');
+                    if (tg) {
+                        try {
+                            tg.HapticFeedback?.notificationOccurred('success');
+                        } catch (e) {}
+                        setTimeout(() => {
+                            tg.close();
+                        }, 1800);
+                    }
+                } else {
+                    alert(`Xatolik yuz berdi: ${result.message || 'Noma\'lum xatolik'}`);
+                    submitBtn.disabled = false;
+                    spinner.style.display = 'none';
+                    btnText.textContent = 'Arizani yuborish';
+                }
+            } catch (error) {
+                console.error('Request failed:', error);
+                alert('Tarmoq ulanishida xatolik yuz berdi. Iltimos qayta urinib ko\'ring.');
+                submitBtn.disabled = false;
+                spinner.style.display = 'none';
+                btnText.textContent = 'Arizani yuborish';
+            }
+        });
+    </script>
+</body>
+</html>
